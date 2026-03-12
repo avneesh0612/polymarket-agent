@@ -14,7 +14,7 @@ import { createReactAgent } from "@langchain/langgraph/prebuilt";
 import { HumanMessage } from "@langchain/core/messages";
 import { allTools } from "./tools";
 import { polymarketTools } from "./polymarket-tools";
-import { SupabaseSaver } from "../supabase-saver";
+import { PgSaver } from "../pg-saver";
 import {
   setAgentWallet,
   setUserJWT,
@@ -29,7 +29,7 @@ const model = new ChatAnthropic({
   maxRetries: 0,
 });
 
-const checkpointer = new SupabaseSaver();
+const checkpointer = new PgSaver();
 
 const SYSTEM_PROMPT = `\
 You are a concise, knowledgeable Web3 assistant with access to the user's delegated EVM wallet on mainnet.

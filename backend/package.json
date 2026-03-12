@@ -20,7 +20,7 @@
     "@langchain/langgraph": "^1.2.2",
     "@lifi/sdk": "^3.16.0",
     "@polymarket/clob-client": "^5.8.0",
-    "@supabase/supabase-js": "^2.99.1",
+    "postgres": "^3.4.5",
     "elevenlabs": "^1.59.0",
     "ethers": "^5.8.0",
     "hono": "^4.12.7",
