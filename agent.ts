@@ -1,9 +1,9 @@
 import { ChatAnthropic } from "@langchain/anthropic";
-import { MemorySaver } from "@langchain/langgraph";
 import { createReactAgent } from "@langchain/langgraph/prebuilt";
 import { HumanMessage } from "@langchain/core/messages";
 import { allTools } from "./tools";
 import { polymarketTools } from "./polymarket-tools";
+import { JsonFileSaver } from "./json-file-saver";
 
 const model = new ChatAnthropic({
   model: "claude-sonnet-4-6",
@@ -11,7 +11,7 @@ const model = new ChatAnthropic({
   maxRetries: 0,
 });
 
-const checkpointer = new MemorySaver();
+const checkpointer = new JsonFileSaver("agent-memory.json");
 
 export const agent = createReactAgent({
   llm: model,
@@ -40,8 +40,9 @@ export const agent = createReactAgent({
     "   c. Call execute_swap to bridge exactly enough USDC to Polygon (add 10% buffer for fees)\n" +
     "   d. Confirm the swap succeeded before proceeding\n" +
     "4. place_polymarket_bet with the correct tokenId (yesTokenId for YES bets)\n\n" +
-    "IMPORTANT: When the user says 'bet $X' and USDC on Polygon is insufficient, automatically\n" +
-    "bridge from their other holdings WITHOUT asking for permission first. Just do it.\n\n" +
+    "IMPORTANT: When the user says 'bet $X' and USDC on Polygon is insufficient, proactively\n" +
+    "identify the best asset to bridge and call execute_swap. The user will be prompted to confirm\n" +
+    "before any transaction is sent.\n\n" +
     "## Cross-Chain Swaps (LI.FI)\n" +
     "To fund Polymarket bets from other chains:\n" +
     "1. get_swap_routes to find bridge/swap options\n" +

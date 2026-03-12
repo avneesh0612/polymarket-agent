@@ -15,6 +15,7 @@ import {
   USDC_ADDRESSES,
 } from "./lifi-client";
 import { agentWallet } from "./tools";
+import { confirm, auditLog } from "./confirm";
 
 // ─── Helper ───────────────────────────────────────────────────────────────────
 
@@ -121,6 +122,26 @@ export const placePolymarketBetTool = tool(
         return JSON.stringify({ success: false, error: "No agent wallet loaded." });
       }
 
+      const priceDisplay = price != null ? `${(price * 100).toFixed(1)}%` : "market price";
+      const confirmed = await confirm(
+        `Place Polymarket bet\n` +
+        `  Side:     ${side.toUpperCase()}\n` +
+        `  Amount:   $${amount} USDC\n` +
+        `  Price:    ${priceDisplay}\n` +
+        `  Token:    ${tokenId.slice(0, 20)}...\n` +
+        `  Network:  Polygon mainnet`
+      );
+
+      auditLog({
+        tool: "place_polymarket_bet",
+        input: { tokenId, side, amount, price, negRisk },
+        confirmed,
+      });
+
+      if (!confirmed) {
+        return JSON.stringify({ success: false, error: "Cancelled by user." });
+      }
+
       console.log(
         `\nPlacing Polymarket bet: $${amount} on ${side.toUpperCase()} (token: ${tokenId.slice(0, 16)}...)`
       );
@@ -131,6 +152,13 @@ export const placePolymarketBetTool = tool(
         amount,
         price: price ?? undefined,
         negRisk: negRisk ?? false,
+      });
+
+      auditLog({
+        tool: "place_polymarket_bet",
+        action: "executed",
+        input: { tokenId, side, amount },
+        result: result.success ? { orderId: result.orderId } : { error: result.error },
       });
 
       if (result.success) {
@@ -389,9 +417,43 @@ export const executeSwapTool = tool(
         ? routes.find((r) => r.id === routeId) ?? routes[0]
         : routes[0];
 
+      const CHAIN_NAMES: Record<number, string> = {
+        1: "Ethereum", 137: "Polygon", 8453: "Base",
+        42161: "Arbitrum", 56: "BSC", 10: "Optimism",
+      };
+      const fromChainName = CHAIN_NAMES[fromChainId] ?? `chain ${fromChainId}`;
+      const toChainName = CHAIN_NAMES[destChain] ?? `chain ${destChain}`;
+
+      const confirmed = await confirm(
+        `Execute swap / bridge\n` +
+        `  From:  ${amount} ${route.fromToken.symbol} on ${fromChainName}\n` +
+        `  To:    ~${route.toAmountMin ? (Number(route.toAmountMin) / 1e6).toFixed(2) : "?"} ${route.toToken.symbol} on ${toChainName}\n` +
+        `  Steps: ${route.steps.length} transaction(s)`
+      );
+
+      auditLog({
+        tool: "execute_swap",
+        input: { fromChainId, fromToken, amount, toChainId: destChain, toToken },
+        routeId: route.id,
+        confirmed,
+      });
+
+      if (!confirmed) {
+        return JSON.stringify({ success: false, error: "Cancelled by user." });
+      }
+
       console.log(`Executing swap: ${route.fromToken.symbol} → ${route.toToken.symbol} via ${route.steps.length} step(s)`);
 
       const result = await executeLiFiRoute(route, wallet.creds);
+
+      auditLog({
+        tool: "execute_swap",
+        action: "executed",
+        input: { fromChainId, fromToken, amount, toChainId: destChain },
+        result: result.success
+          ? { txHashes: result.txHashes, received: `${result.receivedAmount} ${result.receivedToken}` }
+          : { error: result.error, txHashes: result.txHashes },
+      });
 
       if (result.success) {
         return JSON.stringify({

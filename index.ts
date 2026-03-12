@@ -2,6 +2,7 @@ import readline from "readline";
 import { loadDelegationCredentials } from "./delegated-wallet";
 import { setAgentWallet } from "./tools";
 import { runAgent } from "./agent";
+import { setReadlineForConfirm, auditLog } from "./confirm";
 
 // ─── Load Delegated Agent Wallet ─────────────────────────────────────────────
 
@@ -37,6 +38,8 @@ const rl = readline.createInterface({
   output: process.stdout,
 });
 
+setReadlineForConfirm(rl);
+
 const threadId = "interactive-session";
 
 function prompt(question: string): Promise<string> {
@@ -59,10 +62,13 @@ while (true) {
     break;
   }
 
+  auditLog({ event: "user_message", message: userInput, threadId });
   try {
     const response = await runAgent(userInput, threadId);
+    auditLog({ event: "agent_response", preview: response.slice(0, 200) });
     console.log(`\nAgent: ${response}\n`);
   } catch (err: any) {
+    auditLog({ event: "error", error: err?.message ?? String(err) });
     console.error(`\nError: ${err?.message ?? String(err)}\n`);
   }
 }
