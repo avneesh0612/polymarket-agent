@@ -85,8 +85,8 @@ voiceRoute.post("/tts", async (c) => {
     const audioStream = await withTimeout(
       client.textToSpeech.convert(voiceId, {
         text: cleanText,
-        model_id: "eleven_multilingual_v2",
-        output_format: "mp3_44100_192",
+        model_id: "eleven_turbo_v2_5",
+        output_format: "mp3_44100_128",
         voice_settings: {
           stability: 0.4,
           similarity_boost: 0.8,
