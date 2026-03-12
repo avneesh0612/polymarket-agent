@@ -34,16 +34,34 @@ export function VoiceButton({ onTranscription, onError, authToken, apiUrl, disab
 
   const startRecording = async () => {
     try {
-      await Audio.requestPermissionsAsync();
-      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
-      const { recording } = await Audio.Recording.createAsync(
-        Audio.RecordingOptionsPresets.HIGH_QUALITY
-      );
+      const { granted } = await Audio.requestPermissionsAsync();
+      if (!granted) {
+        onError("Microphone permission denied");
+        return;
+      }
+      
+      // Reset audio mode first to release any existing session
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+        playsInSilentModeIOS: false,
+      });
+      
+      // Now set up for recording
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+      });
+      
+      const recording = new Audio.Recording();
+      await recording.prepareToRecordAsync(Audio.RecordingOptionsPresets.LOW_QUALITY);
+      await recording.startAsync();
+      
       recordingRef.current = recording;
       setState("recording");
       startPulse();
     } catch (err) {
-      onError("Failed to start recording");
+      console.error("Recording error:", err);
+      onError(err instanceof Error ? err.message : "Failed to start recording");
     }
   };
 
@@ -53,6 +71,7 @@ export function VoiceButton({ onTranscription, onError, authToken, apiUrl, disab
     setState("processing");
     try {
       await recordingRef.current.stopAndUnloadAsync();
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
       const uri = recordingRef.current.getURI();
       recordingRef.current = null;
 

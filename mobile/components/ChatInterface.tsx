@@ -236,7 +236,9 @@ export function ChatInterface() {
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, agentMsg]);
-      if (voiceOutput) speak(response);
+      if (voiceOutput) {
+        speak(response).catch(() => {});
+      }
     } catch (err) {
       const errMsg: Message = {
         id: (Date.now() + 1).toString(),
