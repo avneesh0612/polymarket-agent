@@ -395,6 +395,17 @@ export async function placeBet(
 
   // Step 6: Submit the order
   try {
+    // Auto-detect neg-risk if not provided
+    let negRisk = params.negRisk;
+    if (negRisk === undefined) {
+      try {
+        negRisk = await clobClient.getNegRisk(params.tokenId);
+        console.log(`  Market neg-risk: ${negRisk}`);
+      } catch {
+        negRisk = false;
+      }
+    }
+
     const side = Side.BUY; // Always BUY the outcome token (YES or NO)
     let response: any;
 
@@ -408,7 +419,7 @@ export async function placeBet(
       };
       response = await clobClient.createAndPostMarketOrder(
         order,
-        { negRisk: params.negRisk ?? false },
+        { negRisk },
         OrderType.FOK
       );
     } else {
@@ -425,7 +436,7 @@ export async function placeBet(
       };
       response = await clobClient.createAndPostOrder(
         order,
-        { negRisk: params.negRisk ?? false },
+        { negRisk },
         OrderType.GTC
       );
     }
@@ -463,6 +474,9 @@ export interface UserPosition {
   currentValue: number;
   pnl: number;
   pnlPercent: number;
+  tokenId?: string;
+  conditionId?: string;
+  negRisk?: boolean;
 }
 
 export async function getUserPositions(
@@ -484,5 +498,265 @@ export async function getUserPositions(
     currentValue: p.currentValue ?? p.value ?? 0,
     pnl: p.cashPnl ?? p.pnl ?? 0,
     pnlPercent: p.percentPnl ?? 0,
+    tokenId: p.asset ?? p.tokenId ?? p.token_id,
+    conditionId: p.conditionId ?? p.condition_id,
+    negRisk: p.negRisk ?? false,
   }));
+}
+
+// ─── Sell Position ─────────────────────────────────────────────────────────────
+
+export interface SellParams {
+  tokenId: string;
+  size: number;          // Number of shares to sell
+  price?: number;        // 0-1 range; omit for market order
+  negRisk?: boolean;
+}
+
+/**
+ * Sell outcome tokens (close a position) on Polymarket.
+ */
+export async function sellPosition(
+  walletAddress: string,
+  delegationCreds: DelegationCredentials,
+  params: SellParams
+): Promise<{ success: boolean; orderId?: string; error?: string }> {
+  const signer: ethers.Signer = new DynamicDelegatedSigner(delegationCreds);
+
+  console.log("  Ensuring outcome token approvals for selling...");
+  await ensureOutcomeTokenApprovals(signer);
+
+  const credentials = await initializeClobCredentials(signer);
+
+  const clobClient = new ClobClient(
+    CLOB_API_URL,
+    POLYGON_CHAIN_ID,
+    signer as any,
+    credentials,
+    SIGNATURE_TYPE_EOA,
+    walletAddress
+  );
+
+  try {
+    // Auto-detect neg-risk if not provided
+    let negRisk = params.negRisk;
+    if (negRisk === undefined) {
+      try {
+        negRisk = await clobClient.getNegRisk(params.tokenId);
+        console.log(`  Market neg-risk: ${negRisk}`);
+      } catch {
+        negRisk = false;
+      }
+    }
+
+    const side = Side.SELL;
+    let response: any;
+
+    if (!params.price) {
+      // Market order (Fill or Kill)
+      const order: UserMarketOrder = {
+        tokenID: params.tokenId,
+        amount: params.size,
+        side,
+        feeRateBps: 0,
+      };
+      response = await clobClient.createAndPostMarketOrder(
+        order,
+        { negRisk },
+        OrderType.FOK
+      );
+    } else {
+      // Limit order (Good Till Cancel)
+      const order: UserOrder = {
+        tokenID: params.tokenId,
+        price: params.price,
+        size: params.size,
+        side,
+        feeRateBps: 0,
+        expiration: 0,
+        taker: "0x0000000000000000000000000000000000000000",
+      };
+      response = await clobClient.createAndPostOrder(
+        order,
+        { negRisk },
+        OrderType.GTC
+      );
+    }
+
+    const orderId =
+      response.orderID ||
+      response.orderId ||
+      response.order_id ||
+      response.id;
+
+    if (orderId) {
+      return { success: true, orderId };
+    } else if (response.success || response.status === "success") {
+      return { success: true, orderId: "pending" };
+    } else if (response.error || response.message) {
+      throw new Error(response.error || response.message);
+    } else {
+      throw new Error(`Unexpected response: ${JSON.stringify(response)}`);
+    }
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to sell position",
+    };
+  }
+}
+
+// ─── Open Orders ───────────────────────────────────────────────────────────────
+
+export interface OpenOrder {
+  id: string;
+  market: string;
+  tokenId: string;
+  side: string;
+  price: number;
+  originalSize: number;
+  sizeMatched: number;
+  sizeRemaining: number;
+  outcome: string;
+  orderType: string;
+  createdAt: string;
+}
+
+export async function getOpenOrders(
+  walletAddress: string,
+  delegationCreds: DelegationCredentials,
+  options?: { market?: string; tokenId?: string }
+): Promise<OpenOrder[]> {
+  const signer: ethers.Signer = new DynamicDelegatedSigner(delegationCreds);
+  const credentials = await initializeClobCredentials(signer);
+
+  const clobClient = new ClobClient(
+    CLOB_API_URL,
+    POLYGON_CHAIN_ID,
+    signer as any,
+    credentials,
+    SIGNATURE_TYPE_EOA,
+    walletAddress
+  );
+
+  const orders = await clobClient.getOpenOrders(options);
+  
+  return (orders ?? []).map((o: any) => ({
+    id: o.id ?? o.order_id ?? o.orderID,
+    market: o.market ?? "",
+    tokenId: o.asset_id ?? o.tokenId ?? "",
+    side: o.side ?? "",
+    price: parseFloat(o.price ?? "0"),
+    originalSize: parseFloat(o.original_size ?? o.originalSize ?? "0"),
+    sizeMatched: parseFloat(o.size_matched ?? o.sizeMatched ?? "0"),
+    sizeRemaining:
+      parseFloat(o.original_size ?? o.originalSize ?? "0") -
+      parseFloat(o.size_matched ?? o.sizeMatched ?? "0"),
+    outcome: o.outcome ?? "",
+    orderType: o.order_type ?? o.orderType ?? "GTC",
+    createdAt: o.created_at ?? o.createdAt ?? "",
+  }));
+}
+
+// ─── Cancel Orders ─────────────────────────────────────────────────────────────
+
+export async function cancelOrder(
+  walletAddress: string,
+  delegationCreds: DelegationCredentials,
+  orderId: string
+): Promise<{ success: boolean; canceled?: string[]; error?: string }> {
+  const signer: ethers.Signer = new DynamicDelegatedSigner(delegationCreds);
+  const credentials = await initializeClobCredentials(signer);
+
+  const clobClient = new ClobClient(
+    CLOB_API_URL,
+    POLYGON_CHAIN_ID,
+    signer as any,
+    credentials,
+    SIGNATURE_TYPE_EOA,
+    walletAddress
+  );
+
+  try {
+    const response = await clobClient.cancelOrder({ orderID: orderId });
+    const canceled = response?.canceled ?? [];
+    const notCanceled = response?.not_canceled ?? {};
+
+    if (canceled.includes(orderId)) {
+      return { success: true, canceled };
+    } else if (Object.keys(notCanceled).length > 0) {
+      return {
+        success: false,
+        error: `Failed to cancel: ${JSON.stringify(notCanceled)}`,
+      };
+    } else {
+      return { success: true, canceled };
+    }
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to cancel order",
+    };
+  }
+}
+
+export async function cancelAllOrders(
+  walletAddress: string,
+  delegationCreds: DelegationCredentials
+): Promise<{ success: boolean; canceled?: string[]; error?: string }> {
+  const signer: ethers.Signer = new DynamicDelegatedSigner(delegationCreds);
+  const credentials = await initializeClobCredentials(signer);
+
+  const clobClient = new ClobClient(
+    CLOB_API_URL,
+    POLYGON_CHAIN_ID,
+    signer as any,
+    credentials,
+    SIGNATURE_TYPE_EOA,
+    walletAddress
+  );
+
+  try {
+    const response = await clobClient.cancelAll();
+    const canceled = response?.canceled ?? [];
+    return { success: true, canceled };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to cancel orders",
+    };
+  }
+}
+
+export async function cancelMarketOrders(
+  walletAddress: string,
+  delegationCreds: DelegationCredentials,
+  options: { market?: string; tokenId?: string }
+): Promise<{ success: boolean; canceled?: string[]; error?: string }> {
+  const signer: ethers.Signer = new DynamicDelegatedSigner(delegationCreds);
+  const credentials = await initializeClobCredentials(signer);
+
+  const clobClient = new ClobClient(
+    CLOB_API_URL,
+    POLYGON_CHAIN_ID,
+    signer as any,
+    credentials,
+    SIGNATURE_TYPE_EOA,
+    walletAddress
+  );
+
+  try {
+    const cancelParams: { market?: string; asset_id?: string } = {};
+    if (options.market) cancelParams.market = options.market;
+    if (options.tokenId) cancelParams.asset_id = options.tokenId;
+    
+    const response = await clobClient.cancelMarketOrders(cancelParams);
+    const canceled = response?.canceled ?? [];
+    return { success: true, canceled };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to cancel market orders",
+    };
+  }
 }

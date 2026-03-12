@@ -5,6 +5,11 @@ import {
   getUsdcBalance,
   placeBet,
   getUserPositions,
+  sellPosition,
+  getOpenOrders,
+  cancelOrder,
+  cancelAllOrders,
+  cancelMarketOrders,
 } from "../clients/polymarket-client";
 import {
   getLiFiRoutes,
@@ -225,9 +230,12 @@ export const getPolymarketPositionsTool = tool(
           currentValue: `$${p.currentValue.toFixed(2)}`,
           pnl: `${p.pnl >= 0 ? "+" : ""}$${p.pnl.toFixed(2)}`,
           pnlPercent: `${p.pnlPercent >= 0 ? "+" : ""}${p.pnlPercent.toFixed(1)}%`,
+          tokenId: p.tokenId,
+          negRisk: p.negRisk,
         })),
         count: positions.length,
         address: wallet.address,
+        hint: "Use the tokenId and shares from a position to sell it with sell_polymarket_position.",
       });
     } catch (err) {
       return formatError(err);
@@ -236,8 +244,288 @@ export const getPolymarketPositionsTool = tool(
   {
     name: "get_polymarket_positions",
     description:
-      "Get current Polymarket prediction market positions (bets) for the agent wallet, including P&L.",
+      "Get current Polymarket prediction market positions (bets) for the agent wallet, including P&L and token IDs needed for selling.",
     schema: z.object({}),
+  }
+);
+
+export const sellPolymarketPositionTool = tool(
+  async ({ tokenId, size, price, negRisk }) => {
+    try {
+      const wallet = getAgentWallet();
+      if (!wallet) {
+        return JSON.stringify({ success: false, error: "No agent wallet loaded." });
+      }
+
+      const priceDisplay = price != null ? `${(price * 100).toFixed(1)}%` : "market price";
+      const confirmed = await confirm(
+        `Sell Polymarket position\n` +
+        `  Shares:   ${size}\n` +
+        `  Price:    ${priceDisplay}\n` +
+        `  Token:    ${tokenId.slice(0, 20)}...\n` +
+        `  Network:  Polygon mainnet`
+      );
+
+      auditLog({
+        tool: "sell_polymarket_position",
+        input: { tokenId, size, price, negRisk },
+        confirmed,
+      });
+
+      if (!confirmed) {
+        return JSON.stringify({ success: false, error: "Cancelled by user." });
+      }
+
+      console.log(
+        `\nSelling ${size} shares (token: ${tokenId.slice(0, 16)}...)`
+      );
+
+      const result = await sellPosition(wallet.address, wallet.creds, {
+        tokenId,
+        size,
+        price: price ?? undefined,
+        negRisk: negRisk ?? false,
+      });
+
+      auditLog({
+        tool: "sell_polymarket_position",
+        action: "executed",
+        input: { tokenId, size },
+        result: result.success ? { orderId: result.orderId } : { error: result.error },
+      });
+
+      if (result.success) {
+        return JSON.stringify({
+          success: true,
+          orderId: result.orderId,
+          message: `Successfully placed sell order for ${size} shares. Order ID: ${result.orderId}`,
+          walletAddress: wallet.address,
+          network: "Polygon",
+        });
+      } else {
+        return JSON.stringify({ success: false, error: result.error });
+      }
+    } catch (err) {
+      return formatError(err);
+    }
+  },
+  {
+    name: "sell_polymarket_position",
+    description:
+      "Sell outcome tokens (close a position) on Polymarket. " +
+      "Use get_polymarket_positions first to see your positions and their token IDs. " +
+      "The size is the number of shares to sell, not a dollar amount.",
+    schema: z.object({
+      tokenId: z
+        .string()
+        .describe("Token ID of the position to sell (from get_polymarket_positions)"),
+      size: z.number().describe("Number of shares to sell"),
+      price: z
+        .number()
+        .optional()
+        .describe("Price per share (0-1). Omit for market order (immediate execution)."),
+      negRisk: z
+        .boolean()
+        .optional()
+        .describe("Whether this is a neg-risk market (from position data)"),
+    }),
+  }
+);
+
+export const getOpenPolymarketOrdersTool = tool(
+  async ({ market, tokenId }) => {
+    try {
+      const wallet = getAgentWallet();
+      if (!wallet) {
+        return JSON.stringify({ success: false, error: "No agent wallet loaded." });
+      }
+
+      const orders = await getOpenOrders(wallet.address, wallet.creds, {
+        market,
+        asset_id: tokenId,
+      } as any);
+
+      if (orders.length === 0) {
+        return JSON.stringify({
+          orders: [],
+          message: "No open orders found.",
+          address: wallet.address,
+        });
+      }
+
+      return JSON.stringify({
+        orders: orders.map((o) => ({
+          id: o.id,
+          side: o.side,
+          price: `${(o.price * 100).toFixed(1)}%`,
+          originalSize: o.originalSize.toFixed(4),
+          sizeMatched: o.sizeMatched.toFixed(4),
+          sizeRemaining: o.sizeRemaining.toFixed(4),
+          outcome: o.outcome,
+          orderType: o.orderType,
+          market: o.market,
+          tokenId: o.tokenId,
+          createdAt: o.createdAt,
+        })),
+        count: orders.length,
+        address: wallet.address,
+        hint: "Use the order 'id' with cancel_polymarket_order to cancel specific orders.",
+      });
+    } catch (err) {
+      return formatError(err);
+    }
+  },
+  {
+    name: "get_open_polymarket_orders",
+    description:
+      "Get all open (unfilled) orders on Polymarket. Returns order IDs needed for cancellation.",
+    schema: z.object({
+      market: z
+        .string()
+        .optional()
+        .describe("Filter by market condition ID (optional)"),
+      tokenId: z
+        .string()
+        .optional()
+        .describe("Filter by token ID (optional)"),
+    }),
+  }
+);
+
+export const cancelPolymarketOrderTool = tool(
+  async ({ orderId }) => {
+    try {
+      const wallet = getAgentWallet();
+      if (!wallet) {
+        return JSON.stringify({ success: false, error: "No agent wallet loaded." });
+      }
+
+      const confirmed = await confirm(
+        `Cancel Polymarket order\n` +
+        `  Order ID: ${orderId}`
+      );
+
+      auditLog({
+        tool: "cancel_polymarket_order",
+        input: { orderId },
+        confirmed,
+      });
+
+      if (!confirmed) {
+        return JSON.stringify({ success: false, error: "Cancelled by user." });
+      }
+
+      console.log(`\nCancelling order: ${orderId}`);
+      const result = await cancelOrder(wallet.address, wallet.creds, orderId);
+
+      auditLog({
+        tool: "cancel_polymarket_order",
+        action: "executed",
+        input: { orderId },
+        result,
+      });
+
+      if (result.success) {
+        return JSON.stringify({
+          success: true,
+          canceled: result.canceled,
+          message: `Successfully cancelled order ${orderId}`,
+        });
+      } else {
+        return JSON.stringify({ success: false, error: result.error });
+      }
+    } catch (err) {
+      return formatError(err);
+    }
+  },
+  {
+    name: "cancel_polymarket_order",
+    description:
+      "Cancel a single open order on Polymarket by order ID. " +
+      "Use get_open_polymarket_orders first to see your orders and their IDs.",
+    schema: z.object({
+      orderId: z.string().describe("The order ID to cancel"),
+    }),
+  }
+);
+
+export const cancelAllPolymarketOrdersTool = tool(
+  async ({ market, tokenId }) => {
+    try {
+      const wallet = getAgentWallet();
+      if (!wallet) {
+        return JSON.stringify({ success: false, error: "No agent wallet loaded." });
+      }
+
+      const scope = market
+        ? `all orders in market ${market.slice(0, 16)}...`
+        : tokenId
+        ? `all orders for token ${tokenId.slice(0, 16)}...`
+        : "ALL open orders across all markets";
+
+      const confirmed = await confirm(
+        `Cancel Polymarket orders\n` +
+        `  Scope: ${scope}`
+      );
+
+      auditLog({
+        tool: "cancel_all_polymarket_orders",
+        input: { market, tokenId },
+        confirmed,
+      });
+
+      if (!confirmed) {
+        return JSON.stringify({ success: false, error: "Cancelled by user." });
+      }
+
+      let result;
+      if (market || tokenId) {
+        console.log(`\nCancelling orders for market/token...`);
+        result = await cancelMarketOrders(wallet.address, wallet.creds, {
+          market,
+          tokenId,
+        });
+      } else {
+        console.log(`\nCancelling all open orders...`);
+        result = await cancelAllOrders(wallet.address, wallet.creds);
+      }
+
+      auditLog({
+        tool: "cancel_all_polymarket_orders",
+        action: "executed",
+        input: { market, tokenId },
+        result,
+      });
+
+      if (result.success) {
+        return JSON.stringify({
+          success: true,
+          canceled: result.canceled,
+          count: result.canceled?.length ?? 0,
+          message: `Successfully cancelled ${result.canceled?.length ?? 0} orders`,
+        });
+      } else {
+        return JSON.stringify({ success: false, error: result.error });
+      }
+    } catch (err) {
+      return formatError(err);
+    }
+  },
+  {
+    name: "cancel_all_polymarket_orders",
+    description:
+      "Cancel multiple open orders on Polymarket. " +
+      "Can cancel all orders, or filter by market or token ID.",
+    schema: z.object({
+      market: z
+        .string()
+        .optional()
+        .describe("Cancel orders only in this market condition ID (optional)"),
+      tokenId: z
+        .string()
+        .optional()
+        .describe("Cancel orders only for this token ID (optional)"),
+    }),
   }
 );
 
@@ -505,6 +793,10 @@ export const polymarketTools = [
   checkUsdcBalanceTool,
   placePolymarketBetTool,
   getPolymarketPositionsTool,
+  sellPolymarketPositionTool,
+  getOpenPolymarketOrdersTool,
+  cancelPolymarketOrderTool,
+  cancelAllPolymarketOrdersTool,
   getSwapRoutesTool,
   executeSwapTool,
 ];
