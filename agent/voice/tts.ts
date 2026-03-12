@@ -21,7 +21,7 @@ export class TextToSpeech {
     const audioStream = await this.client.textToSpeech.convert(this.voiceId, {
       text,
       model_id: "eleven_turbo_v2_5",
-      output_format: "mp3_44100_128",
+      output_format: "mp3_44100_64",
     });
 
     // Buffer the stream

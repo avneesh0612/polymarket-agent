@@ -70,7 +70,6 @@ voiceRoute.post("/tts", async (c) => {
   if (!body.text) return c.json({ error: "text required" }, 400);
 
   try {
-    const client = new ElevenLabsClient({ apiKey });
     const voiceId = process.env.ELEVENLABS_VOICE_ID ?? "JBFqnCBsd6RMkjVDRZzb";
 
     // Strip markdown-style formatting so TTS sounds natural
@@ -82,21 +81,33 @@ voiceRoute.post("/tts", async (c) => {
       .replace(/\[(.+?)\]\(.+?\)/g, "$1") // links
       .trim();
 
-    const audioStream = await withTimeout(
-      client.textToSpeech.convert(voiceId, {
-        text: cleanText,
-        output_format: "mp3_44100_128",
+    // Use direct fetch instead of SDK (SDK has issues with library voices)
+    const response = await withTimeout(
+      fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_44100_128`, {
+        method: "POST",
+        headers: {
+          "xi-api-key": apiKey,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          text: cleanText,
+          model_id: "eleven_multilingual_v2",
+        }),
       }),
       TTS_TIMEOUT_MS,
       "TTS"
     );
 
-    // Collect stream into buffer
-    const chunks: Uint8Array[] = [];
-    for await (const chunk of audioStream) {
-      chunks.push(chunk);
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("[voice/tts] API error:", response.status, errorText);
+      if (response.status === 402) {
+        return c.json({ error: "ElevenLabs quota exceeded or payment required." }, 402);
+      }
+      return c.json({ error: "Voice synthesis failed." }, 500);
     }
-    const buffer = Buffer.concat(chunks);
+
+    const buffer = Buffer.from(await response.arrayBuffer());
 
     return new Response(buffer, {
       headers: {
