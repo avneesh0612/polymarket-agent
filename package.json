@@ -1,16 +1,21 @@
 {
-  "name": "langgraph-dynamic-agent",
+  "name": "agent",
   "module": "index.ts",
   "type": "module",
   "private": true,
+  "workspaces": ["web"],
   "scripts": {
     "start": "bun run index.ts",
     "dev": "bun --hot index.ts",
     "voice": "bun run voice/index.ts",
-    "voice:dev": "bun --hot voice/index.ts"
+    "voice:dev": "bun --hot voice/index.ts",
+    "web": "turbo dev --filter=web",
+    "web:build": "turbo build --filter=web",
+    "dev:all": "turbo dev"
   },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "turbo": "^2"
   },
   "peerDependencies": {
     "typescript": "^5"
