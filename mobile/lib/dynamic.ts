@@ -21,7 +21,7 @@ const ENV_ID = process.env.EXPO_PUBLIC_DYNAMIC_ENVIRONMENT_ID;
 if (!ENV_ID) {
   console.warn(
     "[dynamic] EXPO_PUBLIC_DYNAMIC_ENVIRONMENT_ID is not set. " +
-      "Auth will not work. Add it to your .env file."
+      "Auth will not work. Add it to your .env file.",
   );
 }
 

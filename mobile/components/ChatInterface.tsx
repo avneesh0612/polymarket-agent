@@ -9,13 +9,14 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  Keyboard,
 } from "react-native";
 import { Audio } from "expo-av";
 import * as FileSystem from "expo-file-system";
-import { useReactiveClient } from "@dynamic-labs/react-hooks";
 import { VoiceButton } from "./VoiceButton";
 import { sendMessage, getDelegationStatus } from "../lib/api";
 import { dynamicClient } from "../lib/dynamic";
+import { useReactiveClient } from "@dynamic-labs/react-hooks";
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:3001";
 
@@ -37,7 +38,12 @@ interface Message {
 function MessageBubble({ message }: { message: Message }) {
   const isUser = message.role === "user";
   return (
-    <View style={[styles.bubbleRow, isUser ? styles.bubbleRowUser : styles.bubbleRowAgent]}>
+    <View
+      style={[
+        styles.bubbleRow,
+        isUser ? styles.bubbleRowUser : styles.bubbleRowAgent,
+      ]}
+    >
       <View
         style={[
           styles.bubble,
@@ -45,11 +51,24 @@ function MessageBubble({ message }: { message: Message }) {
           message.error && styles.bubbleError,
         ]}
       >
-        <Text style={[styles.bubbleText, isUser ? styles.bubbleTextUser : styles.bubbleTextAgent]}>
+        <Text
+          style={[
+            styles.bubbleText,
+            isUser ? styles.bubbleTextUser : styles.bubbleTextAgent,
+          ]}
+        >
           {message.content}
         </Text>
-        <Text style={[styles.timestamp, isUser ? styles.timestampUser : styles.timestampAgent]}>
-          {message.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+        <Text
+          style={[
+            styles.timestamp,
+            isUser ? styles.timestampUser : styles.timestampAgent,
+          ]}
+        >
+          {message.timestamp.toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          })}
         </Text>
       </View>
     </View>
@@ -71,8 +90,8 @@ function ThinkingBubble() {
 }
 
 export function ChatInterface() {
-  // Dynamic auth — token is null when logged out, JWT string when logged in
-  const { auth, wallets } = useReactiveClient(dynamicClient);
+  // Dynamic auth — use reactive hook so component re-renders on auth changes
+  const { auth } = useReactiveClient(dynamicClient);
   const authToken = auth.token;
 
   const [messages, setMessages] = useState<Message[]>([]);
@@ -96,7 +115,10 @@ export function ChatInterface() {
 
   useEffect(() => {
     if (messages.length > 0) {
-      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+      setTimeout(
+        () => flatListRef.current?.scrollToEnd({ animated: true }),
+        100,
+      );
     }
   }, [messages, isLoading]);
 
@@ -123,9 +145,7 @@ export function ChatInterface() {
       const audioUri = `${FileSystem.cacheDirectory}tts-${Date.now()}.mp3`;
       const base64 = await res
         .arrayBuffer()
-        .then((buf) =>
-          btoa(String.fromCharCode(...new Uint8Array(buf)))
-        );
+        .then((buf) => btoa(String.fromCharCode(...new Uint8Array(buf))));
       await FileSystem.writeAsStringAsync(audioUri, base64, {
         encoding: FileSystem.EncodingType.Base64,
       });
@@ -247,6 +267,8 @@ export function ChatInterface() {
         data={messages}
         keyExtractor={(m) => m.id}
         renderItem={({ item }) => <MessageBubble message={item} />}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         ListEmptyComponent={
           isEmpty ? (
             <View style={styles.emptyState}>
@@ -256,7 +278,11 @@ export function ChatInterface() {
               </Text>
               <View style={styles.suggestions}>
                 {SUGGESTIONS.map((s) => (
-                  <TouchableOpacity key={s} style={styles.suggestion} onPress={() => handleSend(s)}>
+                  <TouchableOpacity
+                    key={s}
+                    style={styles.suggestion}
+                    onPress={() => handleSend(s)}
+                  >
                     <Text style={styles.suggestionText}>{s}</Text>
                   </TouchableOpacity>
                 ))}
@@ -311,14 +337,18 @@ export function ChatInterface() {
           onPress={() => setVoiceOutput((v) => !v)}
           accessibilityLabel="Toggle voice output"
         >
-          <Text style={styles.voiceToggleText}>{voiceOutput ? "🔊" : "🔇"}</Text>
+          <Text style={styles.voiceToggleText}>
+            {voiceOutput ? "🔊" : "🔇"}
+          </Text>
         </TouchableOpacity>
 
         <TextInput
           style={styles.input}
           value={input}
           onChangeText={setInput}
-          placeholder={authToken ? "Ask me anything..." : "Connect wallet to start"}
+          placeholder={
+            authToken ? "Ask me anything..." : "Connect wallet to start"
+          }
           placeholderTextColor="#9ca3af"
           multiline
           maxLength={2000}
@@ -339,7 +369,9 @@ export function ChatInterface() {
               styles.sendButton,
               (!input.trim() || isLoading || !authToken) && styles.sendDisabled,
             ]}
-            onPress={() => (authToken ? handleSend(input) : dynamicClient.ui.auth.show())}
+            onPress={() =>
+              authToken ? handleSend(input) : dynamicClient.ui.auth.show()
+            }
             disabled={isLoading}
           >
             {isLoading ? (
@@ -361,9 +393,19 @@ const styles = StyleSheet.create({
   bubbleRow: { flexDirection: "row", marginBottom: 12 },
   bubbleRowUser: { justifyContent: "flex-end" },
   bubbleRowAgent: { justifyContent: "flex-start" },
-  bubble: { maxWidth: "80%", borderRadius: 18, paddingHorizontal: 14, paddingVertical: 10 },
+  bubble: {
+    maxWidth: "80%",
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
   bubbleUser: { backgroundColor: "#7c3aed", borderBottomRightRadius: 4 },
-  bubbleAgent: { backgroundColor: "#fff", borderWidth: 1, borderColor: "#e5e7eb", borderBottomLeftRadius: 4 },
+  bubbleAgent: {
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    borderBottomLeftRadius: 4,
+  },
   bubbleError: { backgroundColor: "#fef2f2", borderColor: "#fca5a5" },
   bubbleText: { fontSize: 15, lineHeight: 22 },
   bubbleTextUser: { color: "#fff" },
@@ -374,8 +416,19 @@ const styles = StyleSheet.create({
   thinkingDots: { flexDirection: "row", gap: 4, paddingVertical: 4 },
   dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: "#9ca3af" },
   emptyState: { alignItems: "center", paddingTop: 60, paddingHorizontal: 24 },
-  emptyTitle: { fontSize: 20, fontWeight: "700", color: "#111827", marginBottom: 8 },
-  emptySubtitle: { fontSize: 14, color: "#6b7280", textAlign: "center", lineHeight: 20, marginBottom: 24 },
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#111827",
+    marginBottom: 8,
+  },
+  emptySubtitle: {
+    fontSize: 14,
+    color: "#6b7280",
+    textAlign: "center",
+    lineHeight: 20,
+    marginBottom: 24,
+  },
   suggestions: { width: "100%", gap: 8 },
   suggestion: {
     backgroundColor: "#fff",
@@ -405,7 +458,12 @@ const styles = StyleSheet.create({
     color: "#111827",
     maxHeight: 120,
   },
-  inputActions: { flexDirection: "row", alignItems: "center", gap: 8, paddingBottom: 2 },
+  inputActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingBottom: 2,
+  },
   sendButton: {
     width: 40,
     height: 40,
@@ -431,7 +489,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 10,
   },
-  authBannerText: { color: "#fff", fontSize: 13, textAlign: "center", fontWeight: "500" },
+  authBannerText: {
+    color: "#fff",
+    fontSize: 13,
+    textAlign: "center",
+    fontWeight: "500",
+  },
   voiceToggle: {
     width: 36,
     height: 36,

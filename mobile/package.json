@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@dynamic-labs/client": "^4.67.1",
+    "@dynamic-labs/react-hooks": "^4.67.1",
     "@dynamic-labs/react-native-extension": "^4.67.1",
     "@dynamic-labs/sdk-api-core": "^0.0.897",
     "@expo/vector-icons": "^15.0.3",
