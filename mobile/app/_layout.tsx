@@ -8,7 +8,7 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <StatusBar style="light" />
+        <StatusBar style="dark" />
         {/*
           Dynamic's React Native SDK requires its WebView to be rendered at
           the root of the app so the auth UI can overlay any screen.
@@ -17,9 +17,9 @@ export default function RootLayout() {
         <dynamicClient.reactNative.WebView />
         <Stack
           screenOptions={{
-            headerStyle: { backgroundColor: "#7c3aed" },
-            headerTintColor: "#fff",
-            headerTitleStyle: { fontWeight: "bold" },
+            headerStyle: { backgroundColor: "#fff" },
+            headerTintColor: "#000",
+            headerTitleStyle: { fontWeight: "600" },
           }}
         />
       </SafeAreaProvider>

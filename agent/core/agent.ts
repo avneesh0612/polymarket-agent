@@ -1,9 +1,9 @@
 import { ChatAnthropic } from "@langchain/anthropic";
 import { createReactAgent } from "@langchain/langgraph/prebuilt";
 import { HumanMessage } from "@langchain/core/messages";
+import { MemorySaver } from "@langchain/langgraph";
 import { allTools } from "./tools";
 import { polymarketTools } from "./polymarket-tools";
-import { JsonFileSaver } from "./json-file-saver";
 
 const model = new ChatAnthropic({
   model: "claude-haiku-4-5-20251001",
@@ -11,7 +11,7 @@ const model = new ChatAnthropic({
   maxRetries: 0,
 });
 
-const checkpointer = new JsonFileSaver("agent-memory.json");
+const checkpointer = new MemorySaver();
 
 export const agent = createReactAgent({
   llm: model,

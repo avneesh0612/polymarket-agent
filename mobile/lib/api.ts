@@ -1,21 +1,40 @@
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:3001";
 
+export async function getChatHistory(
+  authToken: string
+): Promise<{ role: "user" | "assistant"; content: string; created_at: string }[]> {
+  const res = await fetch(`${API_URL}/api/history`, {
+    headers: { Authorization: `Bearer ${authToken}` },
+  });
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.messages ?? [];
+}
+
 export async function sendMessage(
   message: string,
   authToken: string,
+  signal?: AbortSignal,
   threadId?: string
 ): Promise<string> {
-  const res = await fetch(`${API_URL}/api/agent`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${authToken}`,
-    },
-    body: JSON.stringify({ message, threadId }),
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}/api/agent`, {
+      method: "POST",
+      signal,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${authToken}`,
+      },
+      body: JSON.stringify({ message, threadId }),
+    });
+  } catch (err: any) {
+    if (err?.name === "AbortError") throw new Error("Request cancelled.");
+    throw new Error("Network error. Check your connection and try again.");
+  }
 
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error ?? `Request failed: ${res.status}`);
+  if (!res.ok) throw new Error(data.error ?? `Server error (${res.status})`);
   return data.response;
 }
 
@@ -24,10 +43,15 @@ export async function getDelegationStatus(authToken: string): Promise<{
   address?: string;
   chain?: string;
 }> {
-  const res = await fetch(`${API_URL}/api/delegation/status`, {
-    headers: { Authorization: `Bearer ${authToken}` },
-  });
-  return res.json();
+  try {
+    const res = await fetch(`${API_URL}/api/delegation/status`, {
+      headers: { Authorization: `Bearer ${authToken}` },
+    });
+    if (!res.ok) return { delegated: false };
+    return res.json();
+  } catch {
+    return { delegated: false };
+  }
 }
 
 export async function transcribeAudio(
@@ -41,11 +65,16 @@ export async function transcribeAudio(
     type: "audio/m4a",
   } as any);
 
-  const res = await fetch(`${API_URL}/api/voice/stt`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${authToken}` },
-    body: formData,
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}/api/voice/stt`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${authToken}` },
+      body: formData,
+    });
+  } catch {
+    throw new Error("Network error. Check your connection and try again.");
+  }
 
   const data = await res.json();
   if (!res.ok) throw new Error(data.error ?? "Transcription failed");

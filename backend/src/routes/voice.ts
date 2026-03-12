@@ -2,6 +2,18 @@ import { Hono } from "hono";
 import { withAuth } from "../lib/dynamic-auth";
 import { ElevenLabsClient } from "elevenlabs";
 
+const STT_TIMEOUT_MS = 30_000;
+const TTS_TIMEOUT_MS = 30_000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`${label}_TIMEOUT`)), ms)
+    ),
+  ]);
+}
+
 export const voiceRoute = new Hono();
 
 // POST /api/voice/stt — audio blob → transcription
@@ -20,16 +32,23 @@ voiceRoute.post("/stt", async (c) => {
     const client = new ElevenLabsClient({ apiKey });
     const audioBlob = new Blob([await audioFile.arrayBuffer()], { type: audioFile.type || "audio/webm" });
 
-    const result = await client.speechToText.convert({
-      file: audioBlob as any,
-      model_id: "scribe_v1",
-      language_code: "en",
-    });
+    const result = await withTimeout(
+      client.speechToText.convert({
+        file: audioBlob as any,
+        model_id: "scribe_v1",
+        language_code: "en",
+      }),
+      STT_TIMEOUT_MS,
+      "STT"
+    );
 
     return c.json({ text: result.text });
-  } catch (err) {
+  } catch (err: any) {
     console.error("[voice/stt] Error:", err);
-    return c.json({ error: "Transcription failed" }, 500);
+    if (err?.message === "STT_TIMEOUT") {
+      return c.json({ error: "Transcription timed out. Please try again." }, 504);
+    }
+    return c.json({ error: "Transcription failed. Please try again." }, 500);
   }
 });
 
@@ -54,11 +73,30 @@ voiceRoute.post("/tts", async (c) => {
     const client = new ElevenLabsClient({ apiKey });
     const voiceId = process.env.ELEVENLABS_VOICE_ID ?? "JBFqnCBsd6RMkjVDRZzb";
 
-    const audioStream = await client.textToSpeech.convert(voiceId, {
-      text: body.text,
-      model_id: "eleven_turbo_v2_5",
-      output_format: "mp3_44100_128",
-    });
+    // Strip markdown-style formatting so TTS sounds natural
+    const cleanText = body.text
+      .replace(/\*\*(.+?)\*\*/g, "$1")   // bold
+      .replace(/\*(.+?)\*/g, "$1")        // italic
+      .replace(/#{1,6}\s+/g, "")          // headings
+      .replace(/`{1,3}[^`]*`{1,3}/g, "") // code
+      .replace(/\[(.+?)\]\(.+?\)/g, "$1") // links
+      .trim();
+
+    const audioStream = await withTimeout(
+      client.textToSpeech.convert(voiceId, {
+        text: cleanText,
+        model_id: "eleven_multilingual_v2",
+        output_format: "mp3_44100_192",
+        voice_settings: {
+          stability: 0.4,
+          similarity_boost: 0.8,
+          style: 0.1,
+          use_speaker_boost: true,
+        },
+      }),
+      TTS_TIMEOUT_MS,
+      "TTS"
+    );
 
     // Collect stream into buffer
     const chunks: Uint8Array[] = [];
@@ -73,8 +111,11 @@ voiceRoute.post("/tts", async (c) => {
         "Content-Length": String(buffer.length),
       },
     });
-  } catch (err) {
+  } catch (err: any) {
     console.error("[voice/tts] Error:", err);
-    return c.json({ error: "TTS failed" }, 500);
+    if (err?.message === "TTS_TIMEOUT") {
+      return c.json({ error: "Voice synthesis timed out. Please try again." }, 504);
+    }
+    return c.json({ error: "Voice synthesis failed. Please try again." }, 500);
   }
 });

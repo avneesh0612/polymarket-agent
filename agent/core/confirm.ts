@@ -1,5 +1,4 @@
 import readline from "readline";
-import { appendFileSync } from "fs";
 
 // ─── Shared readline instance ─────────────────────────────────────────────────
 
@@ -40,13 +39,6 @@ export async function confirm(summary: string): Promise<boolean> {
 
 // ─── Audit log ────────────────────────────────────────────────────────────────
 
-const AUDIT_FILE = "audit.log";
-
 export function auditLog(entry: Record<string, unknown>): void {
-  const line = JSON.stringify({ ts: new Date().toISOString(), ...entry });
-  try {
-    appendFileSync(AUDIT_FILE, line + "\n");
-  } catch {
-    // Never crash the agent over a logging failure
-  }
+  console.log("[audit]", JSON.stringify({ ts: new Date().toISOString(), ...entry }));
 }

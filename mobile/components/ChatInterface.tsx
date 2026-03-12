@@ -9,23 +9,39 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
-  Keyboard,
+  Animated,
 } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { Audio } from "expo-av";
 import * as FileSystem from "expo-file-system";
 import { VoiceButton } from "./VoiceButton";
-import { sendMessage, getDelegationStatus } from "../lib/api";
+import { sendMessage, getDelegationStatus, getChatHistory } from "../lib/api";
 import { dynamicClient } from "../lib/dynamic";
 import { useReactiveClient } from "@dynamic-labs/react-hooks";
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:3001";
 
-const SUGGESTIONS = [
-  "Show my wallet balance",
-  "Search Polymarket markets",
-  "Show my positions",
-  "Bet $2 on a market",
-];
+// ─── Design tokens (iMessage-style) ──────────────────────────────────────────
+
+const C = {
+  blue: "#1a73e8",        // iMessage blue (slightly richer than default)
+  blueDark: "#0060d0",
+  bg: "#ffffff",
+  listBg: "#f2f2f7",      // iOS system gray 6
+  userBubble: "#1a73e8",
+  agentBubble: "#e9e9eb", // iMessage gray
+  border: "#d1d1d6",
+  text: "#000000",
+  textSecondary: "#3c3c43",
+  muted: "#8e8e93",
+  surface: "#ffffff",
+  amber: "#f59e0b",
+  green: "#34c759",       // iOS green
+  red: "#ff3b30",         // iOS red
+  errorBg: "#fff0f0",
+};
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface Message {
   id: string;
@@ -35,62 +51,197 @@ interface Message {
   error?: boolean;
 }
 
+const SUGGESTIONS: { label: string; icon: string }[] = [
+  { label: "Show my wallet balance", icon: "wallet-outline" },
+  { label: "Search Polymarket markets", icon: "search-outline" },
+  { label: "Show my positions", icon: "bar-chart-outline" },
+  { label: "Bet $2 on a market", icon: "trending-up-outline" },
+];
+
+// ─── Message bubble ───────────────────────────────────────────────────────────
+
 function MessageBubble({ message }: { message: Message }) {
   const isUser = message.role === "user";
+  const time = message.timestamp.toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+
   return (
-    <View
-      style={[
-        styles.bubbleRow,
-        isUser ? styles.bubbleRowUser : styles.bubbleRowAgent,
-      ]}
-    >
-      <View
-        style={[
-          styles.bubble,
-          isUser ? styles.bubbleUser : styles.bubbleAgent,
-          message.error && styles.bubbleError,
-        ]}
-      >
-        <Text
+    <View style={[styles.msgRow, isUser ? styles.msgRowUser : styles.msgRowAgent]}>
+      <View style={styles.msgContent}>
+        <View
           style={[
-            styles.bubbleText,
-            isUser ? styles.bubbleTextUser : styles.bubbleTextAgent,
+            styles.bubble,
+            isUser ? styles.bubbleUser : styles.bubbleAgent,
+            message.error && styles.bubbleError,
           ]}
         >
-          {message.content}
-        </Text>
-        <Text
-          style={[
-            styles.timestamp,
-            isUser ? styles.timestampUser : styles.timestampAgent,
-          ]}
-        >
-          {message.timestamp.toLocaleTimeString([], {
-            hour: "2-digit",
-            minute: "2-digit",
-          })}
+          <Text
+            style={[
+              styles.bubbleText,
+              isUser ? styles.bubbleTextUser : styles.bubbleTextAgent,
+              message.error && styles.bubbleTextError,
+            ]}
+          >
+            {message.content}
+          </Text>
+        </View>
+        <Text style={[styles.timeLabel, isUser ? styles.timeLabelUser : styles.timeLabelAgent]}>
+          {time}
         </Text>
       </View>
     </View>
   );
 }
 
+// ─── Animated thinking indicator ──────────────────────────────────────────────
+
 function ThinkingBubble() {
+  const [secs, setSecs] = useState(0);
+  const dots = [
+    useRef(new Animated.Value(0)).current,
+    useRef(new Animated.Value(0)).current,
+    useRef(new Animated.Value(0)).current,
+  ];
+
+  useEffect(() => {
+    const timer = setInterval(() => setSecs((s) => s + 1), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    const anims = dots.map((dot, i) =>
+      Animated.loop(
+        Animated.sequence([
+          Animated.delay(i * 160),
+          Animated.timing(dot, { toValue: 1, duration: 260, useNativeDriver: true }),
+          Animated.timing(dot, { toValue: 0, duration: 260, useNativeDriver: true }),
+          Animated.delay((2 - i) * 160),
+        ])
+      )
+    );
+    anims.forEach((a) => a.start());
+    return () => anims.forEach((a) => a.stop());
+  }, []);
+
+  const longWait = secs >= 8;
+
   return (
-    <View style={[styles.bubbleRow, styles.bubbleRowAgent]}>
-      <View style={[styles.bubble, styles.bubbleAgent]}>
-        <View style={styles.thinkingDots}>
-          {[0, 1, 2].map((i) => (
-            <View key={i} style={styles.dot} />
-          ))}
+    <View style={[styles.msgRow, styles.msgRowAgent]}>
+      <View style={styles.msgContent}>
+        <View style={[styles.bubble, styles.bubbleAgent, styles.thinkingBubble]}>
+          <View style={styles.dotsRow}>
+            {dots.map((dot, i) => (
+              <Animated.View
+                key={i}
+                style={[
+                  styles.dot,
+                  {
+                    opacity: dot.interpolate({ inputRange: [0, 1], outputRange: [0.35, 1] }),
+                    transform: [
+                      {
+                        translateY: dot.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [0, -4],
+                        }),
+                      },
+                    ],
+                  },
+                ]}
+              />
+            ))}
+            {longWait && (
+              <Text style={styles.thinkingTime}>{secs}s</Text>
+            )}
+          </View>
         </View>
       </View>
     </View>
   );
 }
 
+// ─── Empty / welcome state ────────────────────────────────────────────────────
+
+function EmptyState({ onSuggestion }: { onSuggestion: (text: string) => void }) {
+  return (
+    <View style={styles.emptyWrap}>
+      <View style={styles.emptyIconRing}>
+        <Ionicons name="sparkles" size={26} color={C.blue} />
+      </View>
+      <Text style={styles.emptyTitle}>Web3 AI Agent</Text>
+      <Text style={styles.emptySubtitle}>
+        Ask me anything about your wallet, Polymarket markets, or DeFi.
+      </Text>
+      <View style={styles.suggestionsGrid}>
+        {SUGGESTIONS.map((s) => (
+          <TouchableOpacity
+            key={s.label}
+            style={styles.suggestionCard}
+            onPress={() => onSuggestion(s.label)}
+            activeOpacity={0.7}
+          >
+            <View style={styles.suggestionIcon}>
+              <Ionicons name={s.icon as any} size={16} color={C.blue} />
+            </View>
+            <Text style={styles.suggestionText}>{s.label}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+// ─── Status banner ────────────────────────────────────────────────────────────
+
+interface StatusBannerProps {
+  authToken: string | null | undefined;
+  isDelegated: boolean | null;
+  onAuthPress: () => void;
+  onDelegatePress: () => void;
+  onRevokePress: () => void;
+}
+
+function StatusBanner({
+  authToken,
+  isDelegated,
+  onAuthPress,
+  onDelegatePress,
+  onRevokePress,
+}: StatusBannerProps) {
+  if (!authToken) {
+    return (
+      <TouchableOpacity style={[styles.banner, { backgroundColor: C.blue }]} onPress={onAuthPress} activeOpacity={0.85}>
+        <Ionicons name="wallet-outline" size={15} color="#fff" style={styles.bannerIcon} />
+        <Text style={styles.bannerText}>Connect wallet to start chatting</Text>
+        <Ionicons name="chevron-forward" size={14} color="rgba(255,255,255,0.7)" />
+      </TouchableOpacity>
+    );
+  }
+  if (isDelegated === false) {
+    return (
+      <TouchableOpacity style={[styles.banner, { backgroundColor: C.amber }]} onPress={onDelegatePress} activeOpacity={0.85}>
+        <Ionicons name="link-outline" size={15} color="#fff" style={styles.bannerIcon} />
+        <Text style={styles.bannerText}>Grant wallet access for trading</Text>
+        <Ionicons name="chevron-forward" size={14} color="rgba(255,255,255,0.7)" />
+      </TouchableOpacity>
+    );
+  }
+  if (isDelegated === true) {
+    return (
+      <TouchableOpacity style={[styles.banner, { backgroundColor: C.green }]} onPress={onRevokePress} activeOpacity={0.85}>
+        <View style={styles.activeDot} />
+        <Text style={styles.bannerText}>Agent active · Tap to revoke</Text>
+        <Ionicons name="chevron-forward" size={14} color="rgba(255,255,255,0.7)" />
+      </TouchableOpacity>
+    );
+  }
+  return null;
+}
+
+// ─── Main component ───────────────────────────────────────────────────────────
+
 export function ChatInterface() {
-  // Dynamic auth — use reactive hook so component re-renders on auth changes
   const { auth } = useReactiveClient(dynamicClient);
   const authToken = auth.token;
 
@@ -99,30 +250,59 @@ export function ChatInterface() {
   const [isLoading, setIsLoading] = useState(false);
   const [isDelegated, setIsDelegated] = useState<boolean | null>(null);
   const [voiceOutput, setVoiceOutput] = useState(false);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
   const flatListRef = useRef<FlatList>(null);
   const soundRef = useRef<Audio.Sound | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
-  // Check delegation status whenever auth changes
+  // Load delegation status + chat history on auth change
   useEffect(() => {
     if (!authToken) {
       setIsDelegated(null);
+      setMessages([]);
+      setHistoryLoaded(false);
       return;
     }
+
     getDelegationStatus(authToken)
       .then((s) => setIsDelegated(s.delegated))
       .catch(() => setIsDelegated(false));
+
+    if (!historyLoaded) {
+      getChatHistory(authToken)
+        .then((history) => {
+          if (history.length > 0) {
+            setMessages(
+              history.map((m, i) => ({
+                id: `history-${i}`,
+                role: m.role === "user" ? "user" : "agent",
+                content: m.content,
+                timestamp: new Date(m.created_at),
+              }))
+            );
+          }
+          setHistoryLoaded(true);
+        })
+        .catch(() => setHistoryLoaded(true));
+    }
   }, [authToken]);
 
+  // Scroll to end on new messages
   useEffect(() => {
     if (messages.length > 0) {
-      setTimeout(
-        () => flatListRef.current?.scrollToEnd({ animated: true }),
-        100,
-      );
+      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
     }
   }, [messages, isLoading]);
 
-  // TTS: fetch MP3 from backend, save to cache dir, play with expo-av
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+      soundRef.current?.unloadAsync().catch(() => {});
+    };
+  }, []);
+
+  // TTS
   const speak = async (text: string) => {
     if (!authToken) return;
     try {
@@ -130,7 +310,6 @@ export function ChatInterface() {
         await soundRef.current.unloadAsync();
         soundRef.current = null;
       }
-
       const res = await fetch(`${API_URL}/api/voice/tts`, {
         method: "POST",
         headers: {
@@ -141,7 +320,6 @@ export function ChatInterface() {
       });
       if (!res.ok) return;
 
-      // Download audio to a temp file so expo-av can play it
       const audioUri = `${FileSystem.cacheDirectory}tts-${Date.now()}.mp3`;
       const base64 = await res
         .arrayBuffer()
@@ -149,12 +327,10 @@ export function ChatInterface() {
       await FileSystem.writeAsStringAsync(audioUri, base64, {
         encoding: FileSystem.EncodingType.Base64,
       });
-
       await Audio.setAudioModeAsync({ playsInSilentModeIOS: true });
       const { sound } = await Audio.Sound.createAsync({ uri: audioUri });
       soundRef.current = sound;
       await sound.playAsync();
-
       sound.setOnPlaybackStatusUpdate((status) => {
         if (status.isLoaded && status.didJustFinish) {
           sound.unloadAsync();
@@ -167,7 +343,10 @@ export function ChatInterface() {
     }
   };
 
-  // Prompt delegation if the user is authenticated but hasn't delegated yet
+  const handleCancel = () => {
+    abortRef.current?.abort();
+  };
+
   const promptDelegation = async () => {
     try {
       const shouldPrompt =
@@ -180,7 +359,6 @@ export function ChatInterface() {
     }
   };
 
-  // Revoke delegation so the agent can no longer act on behalf of the user
   const revokeDelegation = async () => {
     try {
       const walletsStatus =
@@ -205,13 +383,10 @@ export function ChatInterface() {
     const trimmed = text.trim();
     if (!trimmed || isLoading) return;
 
-    // Prompt login if not authenticated
     if (!authToken) {
       dynamicClient.ui.auth.show();
       return;
     }
-
-    // Prompt delegation if not yet delegated
     if (isDelegated === false) {
       await promptDelegation();
       return;
@@ -227,8 +402,11 @@ export function ChatInterface() {
     setInput("");
     setIsLoading(true);
 
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     try {
-      const response = await sendMessage(trimmed, authToken);
+      const response = await sendMessage(trimmed, authToken, controller.signal);
       const agentMsg: Message = {
         id: (Date.now() + 1).toString(),
         role: "agent",
@@ -240,15 +418,19 @@ export function ChatInterface() {
         speak(response).catch(() => {});
       }
     } catch (err) {
-      const errMsg: Message = {
-        id: (Date.now() + 1).toString(),
-        role: "agent",
-        content: err instanceof Error ? err.message : "Something went wrong.",
-        timestamp: new Date(),
-        error: true,
-      };
-      setMessages((prev) => [...prev, errMsg]);
+      if (err instanceof Error && err.message === "Request cancelled.") return;
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: (Date.now() + 1).toString(),
+          role: "agent",
+          content: err instanceof Error ? err.message : "Something went wrong.",
+          timestamp: new Date(),
+          error: true,
+        },
+      ]);
     } finally {
+      abortRef.current = null;
       setIsLoading(false);
     }
   };
@@ -261,251 +443,310 @@ export function ChatInterface() {
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
     >
-      {/* Messages */}
+      {/* Status banner */}
+      <StatusBanner
+        authToken={authToken}
+        isDelegated={isDelegated}
+        onAuthPress={() => dynamicClient.ui.auth.show()}
+        onDelegatePress={promptDelegation}
+        onRevokePress={revokeDelegation}
+      />
+
+      {/* Message list */}
       <FlatList
         ref={flatListRef}
-        style={styles.messageList}
-        contentContainerStyle={styles.messageContent}
+        style={styles.list}
+        contentContainerStyle={[styles.listContent, isEmpty && styles.listContentEmpty]}
         data={messages}
         keyExtractor={(m) => m.id}
         renderItem={({ item }) => <MessageBubble message={item} />}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         ListEmptyComponent={
-          isEmpty ? (
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyTitle}>Web3 AI Agent</Text>
-              <Text style={styles.emptySubtitle}>
-                Ask me to check balances, search Polymarket, or place bets.
-              </Text>
-              <View style={styles.suggestions}>
-                {SUGGESTIONS.map((s) => (
-                  <TouchableOpacity
-                    key={s}
-                    style={styles.suggestion}
-                    onPress={() => handleSend(s)}
-                  >
-                    <Text style={styles.suggestionText}>{s}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-          ) : null
+          isEmpty ? <EmptyState onSuggestion={(s) => handleSend(s)} /> : null
         }
         ListFooterComponent={isLoading ? <ThinkingBubble /> : null}
       />
 
-      {/* Not-logged-in banner */}
-      {!authToken && (
-        <TouchableOpacity
-          style={styles.authBanner}
-          onPress={() => dynamicClient.ui.auth.show()}
-        >
-          <Text style={styles.authBannerText}>
-            Tap to connect your wallet and get started
-          </Text>
-        </TouchableOpacity>
-      )}
-
-      {/* Delegation banner — prompt when not yet delegated */}
-      {authToken && isDelegated === false && (
-        <TouchableOpacity
-          style={styles.delegationBanner}
-          onPress={promptDelegation}
-        >
-          <Text style={styles.authBannerText}>
-            Delegate wallet access so the agent can trade on your behalf →
-          </Text>
-        </TouchableOpacity>
-      )}
-
-      {/* Revoke banner — shown when delegation is active */}
-      {authToken && isDelegated === true && (
-        <TouchableOpacity
-          style={styles.revokeBanner}
-          onPress={revokeDelegation}
-        >
-          <Text style={styles.authBannerText}>
-            Delegation active · Tap to revoke agent access
-          </Text>
-        </TouchableOpacity>
-      )}
-
       {/* Input bar */}
       <View style={styles.inputBar}>
-        {/* Voice output toggle */}
-        <TouchableOpacity
-          style={[styles.voiceToggle, voiceOutput && styles.voiceToggleActive]}
-          onPress={() => setVoiceOutput((v) => !v)}
-          accessibilityLabel="Toggle voice output"
-        >
-          <Text style={styles.voiceToggleText}>
-            {voiceOutput ? "🔊" : "🔇"}
-          </Text>
-        </TouchableOpacity>
-
-        <TextInput
-          style={styles.input}
-          value={input}
-          onChangeText={setInput}
-          placeholder={
-            authToken ? "Ask me anything..." : "Connect wallet to start"
-          }
-          placeholderTextColor="#9ca3af"
-          multiline
-          maxLength={2000}
-          editable={!isLoading && !!authToken}
-        />
-        <View style={styles.inputActions}>
-          {authToken && (
-            <VoiceButton
-              authToken={authToken}
-              apiUrl={API_URL}
-              onTranscription={(text) => handleSend(text)}
-              onError={(e) => console.warn("Voice error:", e)}
-              disabled={isLoading}
-            />
-          )}
+        <View style={styles.inputRow}>
+          {/* Voice output toggle */}
           <TouchableOpacity
-            style={[
-              styles.sendButton,
-              (!input.trim() || isLoading || !authToken) && styles.sendDisabled,
-            ]}
-            onPress={() =>
-              authToken ? handleSend(input) : dynamicClient.ui.auth.show()
-            }
-            disabled={isLoading}
+            style={styles.iconBtn}
+            onPress={() => setVoiceOutput((v) => !v)}
+            accessibilityLabel="Toggle voice output"
           >
-            {isLoading ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <Text style={styles.sendText}>↑</Text>
-            )}
+            <Ionicons
+              name={voiceOutput ? "volume-high-outline" : "volume-mute-outline"}
+              size={22}
+              color={voiceOutput ? C.blue : C.muted}
+            />
           </TouchableOpacity>
+
+          <TextInput
+            style={styles.input}
+            value={input}
+            onChangeText={setInput}
+            placeholder={authToken ? "iMessage" : "Connect wallet to start"}
+            placeholderTextColor={C.muted}
+            multiline
+            maxLength={2000}
+            editable={!isLoading && !!authToken}
+          />
+
+          <View style={styles.inputActions}>
+            {/* Voice input */}
+            {authToken && !isLoading && (
+              <VoiceButton
+                authToken={authToken}
+                apiUrl={API_URL}
+                onTranscription={(text) => handleSend(text)}
+                onError={(e) => console.warn("Voice error:", e)}
+                disabled={isLoading}
+              />
+            )}
+
+            {/* Cancel while loading */}
+            {isLoading && (
+              <TouchableOpacity style={styles.cancelBtn} onPress={handleCancel} activeOpacity={0.7}>
+                <View style={styles.cancelInner}>
+                  <Ionicons name="stop" size={14} color="#fff" />
+                </View>
+              </TouchableOpacity>
+            )}
+
+            {/* Send */}
+            {!isLoading && (
+              <TouchableOpacity
+                style={[
+                  styles.sendBtn,
+                  (!input.trim() || !authToken) && styles.sendBtnDisabled,
+                ]}
+                onPress={() => (authToken ? handleSend(input) : dynamicClient.ui.auth.show())}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="arrow-up" size={17} color="#fff" />
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
       </View>
     </KeyboardAvoidingView>
   );
 }
 
+// ─── Styles ───────────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#f9fafb" },
-  messageList: { flex: 1 },
-  messageContent: { padding: 16, paddingBottom: 8 },
-  bubbleRow: { flexDirection: "row", marginBottom: 12 },
-  bubbleRowUser: { justifyContent: "flex-end" },
-  bubbleRowAgent: { justifyContent: "flex-start" },
+  container: {
+    flex: 1,
+    backgroundColor: C.listBg,
+  },
+
+  // Banner
+  banner: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    gap: 8,
+  },
+  bannerIcon: { marginRight: 2 },
+  bannerText: {
+    flex: 1,
+    color: "#fff",
+    fontSize: 13,
+    fontWeight: "500",
+  },
+  activeDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: "#a7f3d0",
+    marginRight: 2,
+  },
+
+  // List
+  list: { flex: 1 },
+  listContent: { paddingHorizontal: 12, paddingVertical: 8, paddingBottom: 4 },
+  listContentEmpty: { flex: 1 },
+
+  // Message rows
+  msgRow: {
+    flexDirection: "row",
+    marginBottom: 2,
+    alignItems: "flex-end",
+  },
+  msgRowUser: { justifyContent: "flex-end" },
+  msgRowAgent: { justifyContent: "flex-start" },
+  msgContent: { maxWidth: "75%" },
+
+  // Bubbles — iMessage geometry
   bubble: {
-    maxWidth: "80%",
     borderRadius: 18,
     paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingVertical: 9,
   },
-  bubbleUser: { backgroundColor: "#7c3aed", borderBottomRightRadius: 4 },
+  bubbleUser: {
+    backgroundColor: C.userBubble,
+    borderBottomRightRadius: 4,
+  },
   bubbleAgent: {
-    backgroundColor: "#fff",
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
+    backgroundColor: C.agentBubble,
     borderBottomLeftRadius: 4,
   },
-  bubbleError: { backgroundColor: "#fef2f2", borderColor: "#fca5a5" },
-  bubbleText: { fontSize: 15, lineHeight: 22 },
+  bubbleError: {
+    backgroundColor: C.errorBg,
+  },
+  bubbleText: { fontSize: 16, lineHeight: 22 },
   bubbleTextUser: { color: "#fff" },
-  bubbleTextAgent: { color: "#111827" },
-  timestamp: { fontSize: 10, marginTop: 4 },
-  timestampUser: { color: "#c4b5fd" },
-  timestampAgent: { color: "#9ca3af" },
-  thinkingDots: { flexDirection: "row", gap: 4, paddingVertical: 4 },
-  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: "#9ca3af" },
-  emptyState: { alignItems: "center", paddingTop: 60, paddingHorizontal: 24 },
+  bubbleTextAgent: { color: C.text },
+  bubbleTextError: { color: C.red },
+
+  // Timestamps
+  timeLabel: { fontSize: 11, color: C.muted, marginTop: 3, marginBottom: 6 },
+  timeLabelUser: { textAlign: "right", marginRight: 4 },
+  timeLabelAgent: { textAlign: "left", marginLeft: 4 },
+
+  // Thinking
+  thinkingBubble: { paddingVertical: 11 },
+  dotsRow: { flexDirection: "row", gap: 5, alignItems: "center" },
+  dot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: C.muted,
+  },
+  thinkingTime: {
+    fontSize: 11,
+    color: C.muted,
+    marginLeft: 6,
+  },
+
+  // Empty state
+  emptyWrap: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 28,
+    paddingBottom: 40,
+  },
+  emptyIconRing: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: "#e8f0fe",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 16,
+  },
   emptyTitle: {
     fontSize: 20,
     fontWeight: "700",
-    color: "#111827",
-    marginBottom: 8,
+    color: C.text,
+    marginBottom: 6,
   },
   emptySubtitle: {
     fontSize: 14,
-    color: "#6b7280",
+    color: C.muted,
     textAlign: "center",
     lineHeight: 20,
-    marginBottom: 24,
+    marginBottom: 28,
   },
-  suggestions: { width: "100%", gap: 8 },
-  suggestion: {
-    backgroundColor: "#fff",
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+  suggestionsGrid: {
+    width: "100%",
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
   },
-  suggestionText: { fontSize: 14, color: "#374151" },
+  suggestionCard: {
+    width: "47%",
+    backgroundColor: C.surface,
+    borderRadius: 14,
+    padding: 14,
+    gap: 8,
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
+  },
+  suggestionIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 8,
+    backgroundColor: "#e8f0fe",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  suggestionText: {
+    fontSize: 13,
+    color: C.text,
+    fontWeight: "500",
+    lineHeight: 18,
+  },
+
+  // Input bar — iMessage style
   inputBar: {
+    backgroundColor: C.bg,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: C.border,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+  },
+  inputRow: {
     flexDirection: "row",
     alignItems: "flex-end",
-    padding: 12,
-    backgroundColor: "#fff",
-    borderTopWidth: 1,
-    borderTopColor: "#e5e7eb",
-    gap: 8,
+    gap: 6,
   },
   input: {
     flex: 1,
-    backgroundColor: "#f3f4f6",
+    backgroundColor: C.surface,
     borderRadius: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    fontSize: 15,
-    color: "#111827",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: C.border,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    fontSize: 16,
+    color: C.text,
     maxHeight: 120,
+    lineHeight: 20,
   },
   inputActions: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    paddingBottom: 2,
+    gap: 4,
+    paddingBottom: 1,
   },
-  sendButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#7c3aed",
+  iconBtn: {
+    width: 34,
+    height: 34,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingBottom: 1,
+  },
+  sendBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: C.blue,
     alignItems: "center",
     justifyContent: "center",
   },
-  sendDisabled: { opacity: 0.4 },
-  sendText: { color: "#fff", fontSize: 18, fontWeight: "bold" },
-  authBanner: {
-    backgroundColor: "#7c3aed",
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-  },
-  delegationBanner: {
-    backgroundColor: "#f59e0b",
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-  },
-  revokeBanner: {
-    backgroundColor: "#10b981",
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-  },
-  authBannerText: {
-    color: "#fff",
-    fontSize: 13,
-    textAlign: "center",
-    fontWeight: "500",
-  },
-  voiceToggle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "#f3f4f6",
+  sendBtnDisabled: { opacity: 0.3 },
+  cancelBtn: {
+    width: 34,
+    height: 34,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 2,
   },
-  voiceToggleActive: { backgroundColor: "#ede9fe" },
-  voiceToggleText: { fontSize: 16 },
+  cancelInner: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: C.muted,
+    alignItems: "center",
+    justifyContent: "center",
+  },
 });

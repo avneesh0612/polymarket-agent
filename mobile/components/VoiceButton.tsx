@@ -123,13 +123,13 @@ export function VoiceButton({ onTranscription, onError, authToken, apiUrl, disab
 
 const styles = StyleSheet.create({
   button: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#7c3aed",
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: "#1a73e8",
     alignItems: "center",
     justifyContent: "center",
   },
-  recording: { backgroundColor: "#dc2626" },
+  recording: { backgroundColor: "#ff3b30" },
   disabled: { opacity: 0.4 },
 });
