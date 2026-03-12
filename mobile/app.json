@@ -1,0 +1,37 @@
+{
+  "expo": {
+    "name": "Agent",
+    "slug": "langgraph-agent",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "scheme": "agent",
+    "splash": {
+      "backgroundColor": "#7c3aed"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.agent.app",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Used for voice input to the AI agent"
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#7c3aed"
+      },
+      "package": "com.agent.app",
+      "permissions": ["RECORD_AUDIO"]
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-av",
+        {
+          "microphonePermission": "Allow $(PRODUCT_NAME) to access your microphone for voice input."
+        }
+      ]
+    ]
+  }
+}
