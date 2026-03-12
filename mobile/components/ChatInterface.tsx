@@ -151,12 +151,33 @@ export function ChatInterface() {
   const promptDelegation = async () => {
     try {
       const shouldPrompt =
-        await dynamicClient.wallets.delegation.shouldPromptWalletDelegation();
+        await dynamicClient.wallets.waas.delegation.shouldPromptWalletDelegation();
       if (shouldPrompt) {
-        await dynamicClient.wallets.delegation.initDelegationProcess();
+        await dynamicClient.wallets.waas.delegation.initDelegationProcess({});
       }
     } catch (err) {
       console.warn("[delegation] prompt error:", err);
+    }
+  };
+
+  // Revoke delegation so the agent can no longer act on behalf of the user
+  const revokeDelegation = async () => {
+    try {
+      const walletsStatus =
+        await dynamicClient.wallets.waas.delegation.getWalletsDelegatedStatus();
+      const delegatedWallets = walletsStatus
+        .filter((w: { isDelegated: boolean }) => w.isDelegated)
+        .map((w: { chainName: string; accountAddress: string }) => ({
+          chainName: w.chainName,
+          accountAddress: w.accountAddress,
+        }));
+      if (delegatedWallets.length === 0) return;
+      await dynamicClient.wallets.waas.delegation.revokeDelegation({
+        wallets: delegatedWallets,
+      });
+      setIsDelegated(false);
+    } catch (err) {
+      console.warn("[delegation] revoke error:", err);
     }
   };
 
@@ -258,7 +279,7 @@ export function ChatInterface() {
         </TouchableOpacity>
       )}
 
-      {/* Delegation banner */}
+      {/* Delegation banner — prompt when not yet delegated */}
       {authToken && isDelegated === false && (
         <TouchableOpacity
           style={styles.delegationBanner}
@@ -266,6 +287,18 @@ export function ChatInterface() {
         >
           <Text style={styles.authBannerText}>
             Delegate wallet access so the agent can trade on your behalf →
+          </Text>
+        </TouchableOpacity>
+      )}
+
+      {/* Revoke banner — shown when delegation is active */}
+      {authToken && isDelegated === true && (
+        <TouchableOpacity
+          style={styles.revokeBanner}
+          onPress={revokeDelegation}
+        >
+          <Text style={styles.authBannerText}>
+            Delegation active · Tap to revoke agent access
           </Text>
         </TouchableOpacity>
       )}
@@ -390,6 +423,11 @@ const styles = StyleSheet.create({
   },
   delegationBanner: {
     backgroundColor: "#f59e0b",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  revokeBanner: {
+    backgroundColor: "#10b981",
     paddingHorizontal: 16,
     paddingVertical: 10,
   },
