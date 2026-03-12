@@ -12,3 +12,5 @@
 {"ts":"2026-03-12T00:31:30.741Z","event":"agent_response","preview":"## Your Wallet Balance\n\n**Wallet Address:** 0x43369e95a957091cbe22c7a61d4ccc4f33c10b06\n\n### Polygon (chainId 137)\n| Token | Balance | Price | Value |\n|-------|---------|-------|-------|\n| **POL** | 41"}
 {"ts":"2026-03-12T00:31:48.359Z","event":"user_message","message":"show balance","threadId":"interactive-session"}
 {"ts":"2026-03-12T00:31:48.379Z","event":"error","error":"TextDecoder.decode expects an ArrayBuffer or TypedArray"}
+{"ts":"2026-03-12T02:49:36.750Z","event":"user_message","message":"व्हेन यू चेक बैलेंस?","threadId":"voice-session","mode":"voice"}
+{"ts":"2026-03-12T02:49:45.438Z","event":"agent_response","preview":"Great! Here's your wallet balance summary:\n\n**Your Wallet Address:** `0x43369e95a957091cbe22c7a61d4ccc4f33c10b06`\n\n### Token Balances by Chain:\n\n**Polygon (137):**\n- POL: 41.24 ($4.02 USD)\n- USDC (PoS"}
