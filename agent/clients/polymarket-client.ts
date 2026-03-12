@@ -108,7 +108,27 @@ export class DynamicDelegatedSigner extends ethers.Signer {
       message: value,
     };
 
-    return signTypedDataDelegated(this.creds, typedData);
+    // Compute the hash ethers would sign so we can verify the signature
+    const ethersHash = ethers.utils._TypedDataEncoder.hash(resolvedDomain, types, value);
+    console.log("[debug] EIP-712 hash:", ethersHash);
+    console.log("[debug] primaryType:", primaryType);
+    console.log("[debug] domain:", JSON.stringify(resolvedDomain));
+    console.log("[debug] message:", JSON.stringify(value));
+
+    const sig = await signTypedDataDelegated(this.creds, typedData);
+
+    // Verify: recover the signer from the signature
+    try {
+      const recovered = ethers.utils.recoverAddress(ethersHash, sig);
+      console.log("[debug] signature:", sig);
+      console.log("[debug] recovered signer:", recovered);
+      console.log("[debug] expected signer:", this.creds.walletAddress);
+      console.log("[debug] match:", recovered.toLowerCase() === this.creds.walletAddress.toLowerCase());
+    } catch (e) {
+      console.log("[debug] recovery failed:", e);
+    }
+
+    return sig;
   }
 
   async signTransaction(
