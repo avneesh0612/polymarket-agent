@@ -1,8 +1,8 @@
 import readline from "readline";
-import { loadDelegationCredentials } from "../delegated-wallet";
-import { setAgentWallet } from "../tools";
-import { runAgent } from "../agent";
-import { setReadlineForConfirm, auditLog } from "../confirm";
+import { loadDelegationCredentials } from "../clients/delegated-wallet";
+import { setAgentWallet } from "../agent/tools";
+import { runAgent } from "../agent/agent";
+import { setReadlineForConfirm, auditLog } from "../agent/confirm";
 import { TextToSpeech } from "./tts";
 import { SpeechToText } from "./stt";
 import { toSpeechText } from "./speech-utils";

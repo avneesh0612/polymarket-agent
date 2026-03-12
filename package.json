@@ -11,7 +11,9 @@
     "voice:dev": "bun --hot voice/index.ts",
     "web": "turbo dev --filter=web",
     "web:build": "turbo build --filter=web",
-    "dev:all": "turbo dev"
+    "dev:all": "turbo dev",
+    "typecheck": "tsc --noEmit",
+    "install:all": "bun install"
   },
   "devDependencies": {
     "@types/bun": "latest",

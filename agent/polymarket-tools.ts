@@ -5,7 +5,7 @@ import {
   getUsdcBalance,
   placeBet,
   getUserPositions,
-} from "./polymarket-client";
+} from "../clients/polymarket-client";
 import {
   getLiFiRoutes,
   executeLiFiRoute,
@@ -13,7 +13,7 @@ import {
   formatRoute,
   NATIVE_TOKEN,
   USDC_ADDRESSES,
-} from "./lifi-client";
+} from "../clients/lifi-client";
 import { agentWallet } from "./tools";
 import { confirm, auditLog } from "./confirm";
 

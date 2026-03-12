@@ -1,6 +1,6 @@
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
-import type { DelegationCredentials } from "./delegated-wallet";
+import type { DelegationCredentials } from "../clients/delegated-wallet";
 
 export let agentWallet: DelegationCredentials | null = null;
 
