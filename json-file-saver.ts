@@ -8,7 +8,7 @@
 
 import { MemorySaver } from "@langchain/langgraph";
 import type { RunnableConfig } from "@langchain/core/runnables";
-import { existsSync, readFileSync, writeFileSync } from "fs";
+import { existsSync, readFileSync, writeFileSync, renameSync, unlinkSync } from "fs";
 
 type Storage = Record<string, Record<string, [unknown, unknown]>>;
 type Writes = Record<string, Record<string, [string, unknown][]>>;
@@ -30,6 +30,12 @@ export class JsonFileSaver extends MemorySaver {
   // ─── Hydrate from disk on startup ──────────────────────────────────────────
 
   private _load(): void {
+    // Clean up any leftover .tmp from a previous interrupted write
+    const tmpPath = this.filePath + ".tmp";
+    if (existsSync(tmpPath)) {
+      try { unlinkSync(tmpPath); } catch {}
+    }
+
     if (!existsSync(this.filePath)) return;
     try {
       const raw = readFileSync(this.filePath, "utf8");
@@ -41,7 +47,12 @@ export class JsonFileSaver extends MemorySaver {
         `[memory] Loaded ${threadCount} conversation thread(s) from ${this.filePath}`
       );
     } catch (err) {
-      console.warn(`[memory] Failed to load ${this.filePath}: ${err}`);
+      // Corrupted file — back it up and start fresh so the agent can still run
+      const corruptPath = this.filePath + ".corrupt";
+      try { renameSync(this.filePath, corruptPath); } catch {}
+      console.warn(
+        `[memory] Corrupt checkpoint, starting fresh. Backup saved to ${corruptPath}. Error: ${err}`
+      );
     }
   }
 
@@ -52,8 +63,13 @@ export class JsonFileSaver extends MemorySaver {
       storage: (this as any).storage,
       writes: (this as any).writes,
     };
+    const tmpPath = this.filePath + ".tmp";
     try {
-      writeFileSync(this.filePath, JSON.stringify(state), "utf8");
+      // Write to a temp file first, then atomically rename.
+      // This ensures the checkpoint file is never in a partial/corrupt state
+      // if the process is killed mid-write (rename is atomic on Unix).
+      writeFileSync(tmpPath, JSON.stringify(state), "utf8");
+      renameSync(tmpPath, this.filePath);
     } catch (err) {
       console.warn(`[memory] Failed to save ${this.filePath}: ${err}`);
     }

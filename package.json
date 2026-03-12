@@ -5,7 +5,9 @@
   "private": true,
   "scripts": {
     "start": "bun run index.ts",
-    "dev": "bun --hot index.ts"
+    "dev": "bun --hot index.ts",
+    "voice": "bun run voice/index.ts",
+    "voice:dev": "bun --hot voice/index.ts"
   },
   "devDependencies": {
     "@types/bun": "latest"
@@ -22,6 +24,7 @@
     "@langchain/langgraph": "^1.1.4",
     "@lifi/sdk": "^3.14.1",
     "@polymarket/clob-client": "^5.1.1",
+    "elevenlabs": "^1.59.0",
     "ethers": "^5.8.0"
   }
 }
