@@ -6,7 +6,7 @@ import { polymarketTools } from "./polymarket-tools";
 import { JsonFileSaver } from "./json-file-saver";
 
 const model = new ChatAnthropic({
-  model: "claude-sonnet-4-6",
+  model: "claude-haiku-4-5-20251001",
   temperature: 0,
   maxRetries: 0,
 });
