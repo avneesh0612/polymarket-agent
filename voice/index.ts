@@ -5,6 +5,7 @@ import { runAgent } from "../agent";
 import { setReadlineForConfirm, auditLog } from "../confirm";
 import { TextToSpeech } from "./tts";
 import { SpeechToText } from "./stt";
+import { toSpeechText } from "./speech-utils";
 
 // ─── Validate env ─────────────────────────────────────────────────────────────
 
@@ -105,7 +106,7 @@ async function voiceLoop() {
 
       if (!textMode) {
         console.log("Speaking...");
-        await tts.speak(response);
+        await tts.speak(toSpeechText(response));
         console.log();
       }
     } catch (err: any) {

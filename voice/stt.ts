@@ -31,6 +31,7 @@ export class SpeechToText {
       const response = await this.client.speechToText.convert({
         file: createReadStream(tmpFile),
         model_id: "scribe_v1",
+        language_code: "en", // Force English — prevents mixed-language transcription
       });
       return response.text.trim();
     } finally {
